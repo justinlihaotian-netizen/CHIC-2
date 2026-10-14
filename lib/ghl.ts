@@ -4,7 +4,10 @@ const GHL_BASE = "https://services.leadconnectorhq.com";
 
 export type GhlResult<T> = { ok: true; data: T } | { ok: false; error: string };
 
-export async function ghlRequest<T>(path: string, init: { method?: string; body?: unknown } = {}): Promise<GhlResult<T>> {
+export async function ghlRequest<T>(
+  path: string,
+  init: { method?: string; body?: unknown; version?: string } = {},
+): Promise<GhlResult<T>> {
   const token = process.env.GHL_TOKEN;
   if (!token) {
     return { ok: false, error: "The booking system isn't connected yet (its access token is missing)." };
@@ -16,7 +19,7 @@ export async function ghlRequest<T>(path: string, init: { method?: string; body?
       method: init.method ?? "GET",
       headers: {
         Authorization: `Bearer ${token}`,
-        Version: "2021-04-15",
+        Version: init.version ?? "2021-04-15", // calendars use 2021-04-15, contacts 2021-07-28
         Accept: "application/json",
         ...(init.body ? { "Content-Type": "application/json" } : {}),
       },

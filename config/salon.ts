@@ -4,10 +4,9 @@
 export const SALON_NAME = "CHIC 2 Wasaga";
 export const TIME_ZONE = "America/Toronto";
 
-// The board always shows at least these hours (24-hour clock).
-// If an appointment falls outside them, the board stretches to fit.
-export const DAY_START_HOUR = 9; // 9:00 AM
-export const DAY_END_HOUR = 20; // 8:00 PM
+// Opening hours (24-hour clock). The board shows the full day; hours outside these are shaded.
+export const OPEN_HOUR = 9; // 9:00 AM
+export const CLOSE_HOUR = 20; // 8:00 PM
 
 // GoHighLevel account ids (not secret — the token lives in .env.local).
 export const GHL_LOCATION_ID = "yAamMXgYk4PvWUmljkox";

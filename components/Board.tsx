@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { DAY_END_HOUR, DAY_START_HOUR, SALON_NAME, TECHNICIANS, UNASSIGNED, type Technician } from "@/config/salon";
+import { CLOSE_HOUR, OPEN_HOUR, TECHNICIANS, UNASSIGNED, type Technician } from "@/config/salon";
 import {
   addDays,
   clockLabel,
@@ -10,11 +10,13 @@ import {
   longDateLabel,
   minutesIntoDay,
   minutesLabel,
+  shortDateLabel,
   todayString,
 } from "@/lib/time";
 import type { Appointment } from "@/lib/types";
 import { findClashes, patchBooking } from "@/lib/bookingClient";
 import BookingPanel from "@/components/BookingPanel";
+import { MenuButton } from "@/components/Shell";
 
 const BASE_PX_PER_MIN = 2; // at 100% zoom, 15 minutes = 30px tall
 const MIN_ZOOM = 0.6;
@@ -210,16 +212,9 @@ export default function Board({ initialDate }: { initialDate: string }) {
   const shown = loadedDate === date ? events : [];
   const isToday = date === todayString(now);
 
-  // Visible hours: 9 AM–8 PM, stretched if an appointment falls outside.
-  const { startHour, endHour } = useMemo(() => {
-    let s = DAY_START_HOUR;
-    let e = DAY_END_HOUR;
-    for (const a of shown) {
-      s = Math.min(s, Math.floor(minutesIntoDay(a.start, date) / 60));
-      e = Math.max(e, Math.ceil(minutesIntoDay(a.end, date) / 60));
-    }
-    return { startHour: Math.max(0, s), endHour: Math.min(24, e) };
-  }, [shown, date]);
+  // The board always shows the whole day, midnight to midnight.
+  const startHour = 0;
+  const endHour = 24;
 
   const rangeStartMin = startHour * 60;
   const rangeEndMin = endHour * 60;
@@ -237,11 +232,13 @@ export default function Board({ initialDate }: { initialDate: string }) {
   const nowTop = (nowMin - rangeStartMin) * px;
   const showNow = isToday && nowTop >= 0 && nowTop <= bodyHeight;
 
-  // When opening a day, scroll so the current time (or the morning) is near the top.
+  // When opening a day, scroll to the current time (today), or to opening time / the first booking.
   useEffect(() => {
     const el = scrollRef.current;
     if (!el || loadedDate !== date) return;
-    el.scrollTop = showNow ? Math.max(0, nowTop - 90) : 0;
+    const firstMin = shown.length ? minutesIntoDay(shown[0].start, date) - 30 : Infinity;
+    const targetMin = Math.max(0, Math.min(OPEN_HOUR * 60, firstMin));
+    el.scrollTop = showNow ? Math.max(0, nowTop - 90) : targetMin * px;
     // only when a new day finishes loading
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadedDate]);
@@ -523,9 +520,13 @@ export default function Board({ initialDate }: { initialDate: string }) {
   return (
     <div className="app">
       <header className="topbar">
+        <MenuButton />
         <div className="brand">
-          <div className="salon">{SALON_NAME}</div>
-          <div className="date-label">{longDateLabel(date)}</div>
+          <div className="salon">Appointments</div>
+          <div className="date-label">
+            <span className="wide">{longDateLabel(date)}</span>
+            <span className="narrow">{shortDateLabel(date)}</span>
+          </div>
         </div>
         <nav className="controls">
           <button onClick={() => setDate(addDays(date, -1))} aria-label="Previous day">
@@ -574,9 +575,9 @@ export default function Board({ initialDate }: { initialDate: string }) {
             ["--hour" as string]: `${60 * px}px`,
           }}
         >
-          <div className="corner" />
-          {COLUMNS.map((t) => (
-            <div key={t.id} className="col-head" style={{ borderBottomColor: t.color }}>
+          <div className="corner" style={{ gridRow: 1, gridColumn: 1 }} />
+          {COLUMNS.map((t, i) => (
+            <div key={t.id} className="col-head" style={{ borderBottomColor: t.color, gridRow: 1, gridColumn: i + 2 }}>
               <span className="dot" style={{ background: t.color }} />
               <span className="name">{t.name}</span>
               <span className="count">{byColumn.get(t.id)?.length || ""}</span>
@@ -596,10 +597,11 @@ export default function Board({ initialDate }: { initialDate: string }) {
             )}
           </div>
 
-          {COLUMNS.map((t) => (
+          {COLUMNS.map((t, i) => (
             <div
               key={t.id}
               className={`col${ghost?.techId === t.id ? " drop-target" : ""}`}
+              style={{ gridColumn: i + 2 }}
               ref={(el) => {
                 if (el) colRefs.current.set(t.id, el);
                 else colRefs.current.delete(t.id);
@@ -609,11 +611,12 @@ export default function Board({ initialDate }: { initialDate: string }) {
                 const compact = a.height < 46;
                 const tiny = a.height < 26;
                 const held = a.status === "held";
+                const statusClass = a.status === "showed" ? " showed" : a.status === "noshow" ? " noshow" : "";
                 const moving = ghost?.appt.id === a.id;
                 return (
                   <button
                     key={a.id}
-                    className={`appt${compact ? " compact" : ""}${tiny ? " tiny" : ""}${held ? " held" : ""}${moving ? " moving" : ""}`}
+                    className={`appt${compact ? " compact" : ""}${tiny ? " tiny" : ""}${held ? " held" : ""}${statusClass}${moving ? " moving" : ""}`}
                     style={{
                       top: a.top,
                       height: a.height,
@@ -630,6 +633,7 @@ export default function Board({ initialDate }: { initialDate: string }) {
                     }}
                   >
                     {held && <span className="held-tag">held</span>}
+                    {a.status === "noshow" && <span className="held-tag">no-show</span>}
                     {compact ? (
                       <span className="line">
                         <span className="party">{a.partySize}</span>
@@ -642,6 +646,7 @@ export default function Board({ initialDate }: { initialDate: string }) {
                           <span className="party">{a.partySize}</span>
                           {a.clientName}
                           {a.requested && <span className="heart">♥</span>}
+                          {a.status === "showed" && <span className="checked" title="Checked in">✓</span>}
                         </span>
                         {a.service && <span className="line">{a.service}</span>}
                         <span className="line time">{a.timeLabel}</span>
@@ -671,6 +676,11 @@ export default function Board({ initialDate }: { initialDate: string }) {
               )}
             </div>
           ))}
+
+          <div className="offhours-layer" aria-hidden>
+            <div style={{ top: 0, height: (OPEN_HOUR * 60 - rangeStartMin) * px }} />
+            <div style={{ top: (CLOSE_HOUR * 60 - rangeStartMin) * px, bottom: 0 }} />
+          </div>
 
           {showNow && (
             <div className="now-layer">

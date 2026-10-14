@@ -13,9 +13,15 @@ const NOTIFY_CLIENTS = true;
 
 const fail = (error: string, status: number) => NextResponse.json({ error }, { status });
 const knownTechIds = new Set(TECHNICIANS.map((t) => t.id));
-const STATUS_TO_GHL: Record<string, string> = { held: "new", confirmed: "confirmed", cancelled: "cancelled" };
+const STATUS_TO_GHL: Record<string, string> = {
+  held: "new",
+  confirmed: "confirmed",
+  showed: "showed",
+  noshow: "noshow",
+  cancelled: "cancelled",
+};
 
-/** Change one booking in GHL: reschedule, change technician/service/status, or cancel. */
+/** Change one booking: reschedule, change technician/service/status, check in, or cancel. */
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   if (!isAuthed((await cookies()).get(AUTH_COOKIE)?.value)) {
     return fail("Please enter the PIN first.", 401);

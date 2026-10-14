@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { TECHNICIANS, UNASSIGNED, type Technician } from "@/config/salon";
 import { dateAndMinutesToMs, longDateLabel, minutesIntoDay, minutesLabel, todayString } from "@/lib/time";
-import type { Appointment } from "@/lib/types";
+import { STATUS_LABEL, type Appointment } from "@/lib/types";
 import { findClashes, patchBooking } from "@/lib/bookingClient";
 
 type Mode = "view" | "edit" | "confirm-cancel";
@@ -138,9 +138,7 @@ export default function BookingPanel({ appt, tech, boardDate, dayEvents, onClose
               <dd>{appt.requested ? <><span className="heart">♥</span> Asked for {tech.name}</> : "No — any technician"}</dd>
               <dt>Status</dt>
               <dd>
-                <span className={`status ${appt.status === "held" ? "held" : ""}`}>
-                  {appt.status === "held" ? "On hold (new)" : appt.status}
-                </span>
+                <span className={`status ${appt.status}`}>{STATUS_LABEL[appt.status]}</span>
               </dd>
               {appt.groupOf && (
                 <>
@@ -155,6 +153,11 @@ export default function BookingPanel({ appt, tech, boardDate, dayEvents, onClose
             {mode === "view" && (
               <div className="actions">
                 <button className="primary" onClick={() => setMode("edit")}>Edit / Reschedule</button>
+                {(appt.status === "confirmed" || appt.status === "held") && appt.date === todayString() && (
+                  <button disabled={busy} onClick={() => send({ status: "showed" }, `Checked in ${appt.clientName}.`)}>
+                    {busy ? "Saving…" : "✓ Check in"}
+                  </button>
+                )}
                 {appt.status === "held" && (
                   <button disabled={busy} onClick={() => send({ status: "confirmed" }, `Confirmed ${appt.clientName}'s booking.`)}>
                     {busy ? "Saving…" : "✓ Confirm booking"}
