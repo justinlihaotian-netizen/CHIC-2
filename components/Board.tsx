@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { DAY_END_HOUR, DAY_START_HOUR, SALON_NAME, TECHNICIANS, UNASSIGNED, type Technician } from "@/config/salon";
 import {
   addDays,
@@ -16,7 +16,11 @@ import type { Appointment } from "@/lib/types";
 import { findClashes, patchBooking } from "@/lib/bookingClient";
 import BookingPanel from "@/components/BookingPanel";
 
-const PX_PER_MIN = 2; // 15 minutes = 30px tall
+const BASE_PX_PER_MIN = 2; // at 100% zoom, 15 minutes = 30px tall
+const MIN_ZOOM = 0.6;
+const MAX_ZOOM = 2.5;
+const ZOOM_KEY = "salonBoardZoom";
+const clampZoom = (z: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z));
 const REFRESH_MS = 20_000; // re-read GoHighLevel every 20 seconds
 const SNAP_MIN = 15; // dragged bookings snap to quarter hours
 const LONG_PRESS_MS = 450; // touch: hold this long before a booking can be dragged
@@ -33,7 +37,7 @@ function tint(hex: string, amount: number): string {
 type Placed = Appointment & { top: number; height: number; lane: number; lanes: number; minutes: number; startMin: number };
 
 /** Side-by-side lanes for appointments that overlap within one technician's column. */
-function layoutColumn(items: Appointment[], date: string, rangeStartMin: number): Placed[] {
+function layoutColumn(items: Appointment[], date: string, rangeStartMin: number, px: number): Placed[] {
   const sorted = [...items].sort((a, b) => a.start - b.start || b.end - a.end);
   const placed: Placed[] = [];
   let cluster: Placed[] = [];
@@ -59,8 +63,8 @@ function layoutColumn(items: Appointment[], date: string, rangeStartMin: number)
       ...a,
       minutes,
       startMin,
-      top: (startMin - rangeStartMin) * PX_PER_MIN,
-      height: Math.max(minutes * PX_PER_MIN - 2, 24),
+      top: (startMin - rangeStartMin) * px,
+      height: Math.max(minutes * px - 2, 18),
       lane,
       lanes: 1,
     };
@@ -99,6 +103,9 @@ export default function Board({ initialDate }: { initialDate: string }) {
   const [selected, setSelected] = useState<Appointment | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [toast, setToast] = useState<string | null>(null);
+  const [zoom, setZoom] = useState(1);
+  const px = BASE_PX_PER_MIN * zoom; // pixels per minute at the current zoom
+  const colScale = Math.min(1.6, Math.max(0.8, zoom)); // columns widen/narrow less than time does
 
   // Drag-and-drop
   const [drag, setDragState] = useState<Target | null>(null); // while dragging
@@ -216,18 +223,18 @@ export default function Board({ initialDate }: { initialDate: string }) {
 
   const rangeStartMin = startHour * 60;
   const rangeEndMin = endHour * 60;
-  const bodyHeight = (rangeEndMin - rangeStartMin) * PX_PER_MIN;
+  const bodyHeight = (rangeEndMin - rangeStartMin) * px;
 
   const byColumn = useMemo(() => {
     const map = new Map<string, Placed[]>();
     for (const col of COLUMNS) {
-      map.set(col.id, layoutColumn(shown.filter((a) => a.techId === col.id), date, rangeStartMin));
+      map.set(col.id, layoutColumn(shown.filter((a) => a.techId === col.id), date, rangeStartMin, px));
     }
     return map;
-  }, [shown, date, rangeStartMin]);
+  }, [shown, date, rangeStartMin, px]);
 
   const nowMin = minutesIntoDay(now, date);
-  const nowTop = (nowMin - rangeStartMin) * PX_PER_MIN;
+  const nowTop = (nowMin - rangeStartMin) * px;
   const showNow = isToday && nowTop >= 0 && nowTop <= bodyHeight;
 
   // When opening a day, scroll so the current time (or the morning) is near the top.
@@ -241,8 +248,8 @@ export default function Board({ initialDate }: { initialDate: string }) {
 
   // ── Drag-and-drop ─────────────────────────────────────────────
   // Values the drag handlers need, kept fresh without re-attaching listeners.
-  const layout = useRef({ rangeStartMin, rangeEndMin });
-  layout.current = { rangeStartMin, rangeEndMin };
+  const layout = useRef({ rangeStartMin, rangeEndMin, px });
+  layout.current = { rangeStartMin, rangeEndMin, px };
 
   /** Work out the technician column and snapped start time under the finger/mouse. */
   const targetAt = useCallback((g: Gesture, prevTech: string): Target => {
@@ -255,8 +262,8 @@ export default function Board({ initialDate }: { initialDate: string }) {
       top = r.top;
       if (g.x >= r.left && g.x < r.right) techId = t.id;
     }
-    const { rangeStartMin: lo, rangeEndMin: hi } = layout.current;
-    let startMin = (g.y - top) / PX_PER_MIN - g.grabMin + lo;
+    const { rangeStartMin: lo, rangeEndMin: hi, px: ppm } = layout.current;
+    let startMin = (g.y - top) / ppm - g.grabMin + lo;
     startMin = Math.round(startMin / SNAP_MIN) * SNAP_MIN;
     startMin = Math.max(lo, Math.min(hi - g.appt.minutes, startMin));
     return { appt: g.appt, techId, startMin };
@@ -352,7 +359,7 @@ export default function Board({ initialDate }: { initialDate: string }) {
         startY: e.clientY,
         x: e.clientX,
         y: e.clientY,
-        grabMin: (e.clientY - rect.top) / PX_PER_MIN,
+        grabMin: (e.clientY - rect.top) / layout.current.px,
         active: false,
         timer: touch ? setTimeout(activate, LONG_PRESS_MS) : null,
         cleanup: () => {
@@ -367,6 +374,128 @@ export default function Board({ initialDate }: { initialDate: string }) {
   );
 
   useEffect(() => endGesture, [endGesture]);
+
+  // ── Zoom: two-finger pinch, trackpad pinch, Ctrl + scroll wheel, or the − / + buttons ──
+  // Each device remembers its own zoom.
+  useEffect(() => {
+    try {
+      const saved = Number(localStorage.getItem(ZOOM_KEY));
+      if (saved) setZoom(clampZoom(saved));
+    } catch {}
+  }, []);
+
+  const zoomRef = useRef(zoom);
+  const zoomAnchor = useRef<{ x: number; y: number; minutes: number; ratioX: number } | null>(null);
+  const boardEdges = () => {
+    const el = scrollRef.current!;
+    return {
+      headH: el.querySelector(".corner")?.getBoundingClientRect().height ?? 44,
+      timeW: el.querySelector(".time-col")?.getBoundingClientRect().width ?? 64,
+    };
+  };
+
+  /** Change the zoom, keeping the spot under (fx, fy) — the fingers or the mouse — where it is. */
+  const zoomTo = useCallback((next: number, fx?: number, fy?: number) => {
+    const el = scrollRef.current;
+    const z = Math.round(clampZoom(next) * 100) / 100;
+    if (!el || z === zoomRef.current) return;
+    const r = el.getBoundingClientRect();
+    const { headH, timeW } = boardEdges();
+    const x = (fx ?? r.left + r.width / 2) - r.left;
+    const y = (fy ?? r.top + r.height / 2) - r.top;
+    zoomAnchor.current = {
+      x,
+      y,
+      minutes: (el.scrollTop + y - headH) / (BASE_PX_PER_MIN * zoomRef.current),
+      ratioX: (el.scrollLeft + x - timeW) / Math.max(1, el.scrollWidth - timeW),
+    };
+    zoomRef.current = z;
+    setZoom(z);
+    try {
+      localStorage.setItem(ZOOM_KEY, String(z));
+    } catch {}
+  }, []);
+
+  // After the board is redrawn at the new zoom, scroll so the anchored spot stays put.
+  useLayoutEffect(() => {
+    zoomRef.current = zoom;
+    const el = scrollRef.current;
+    const a = zoomAnchor.current;
+    if (!el || !a) return;
+    zoomAnchor.current = null;
+    const { headH, timeW } = boardEdges();
+    el.scrollTop = a.minutes * BASE_PX_PER_MIN * zoom + headH - a.y;
+    el.scrollLeft = a.ratioX * (el.scrollWidth - timeW) + timeW - a.x;
+  }, [zoom]);
+
+  const cancelDrag = useCallback(() => {
+    endGesture();
+    setDrag(null);
+  }, [endGesture, setDrag]);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    let pinch: { dist: number; zoom: number } | null = null;
+    const spread = (t: TouchList) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+
+    // iPhone / iPad: two fingers
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length !== 2) return;
+      cancelDrag(); // a second finger means zoom, not drag
+      pinch = { dist: spread(e.touches), zoom: zoomRef.current };
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      if (!pinch || e.touches.length !== 2) return;
+      e.preventDefault();
+      const mx = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      const my = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      zoomTo((pinch.zoom * spread(e.touches)) / pinch.dist, mx, my);
+    };
+    const onTouchEnd = (e: TouchEvent) => {
+      if (e.touches.length < 2) pinch = null;
+    };
+    // Laptop trackpad pinch (Chrome, Edge, Firefox) or Ctrl + mouse wheel
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey) return;
+      e.preventDefault();
+      const step = Math.max(-25, Math.min(25, e.deltaY)); // a mouse-wheel click is much bigger than a trackpad tick
+      zoomTo(zoomRef.current * Math.exp(-step * 0.01), e.clientX, e.clientY);
+    };
+    // Safari's own pinch events: zoom the board on a Mac trackpad; on iPhone/iPad the touch code above does it.
+    let gestureZoom = 1;
+    const onGestureStart = (e: Event) => {
+      e.preventDefault();
+      gestureZoom = zoomRef.current;
+    };
+    const onGestureChange = (e: Event) => {
+      e.preventDefault();
+      if (pinch) return;
+      const g = e as Event & { scale: number; clientX: number; clientY: number };
+      zoomTo(gestureZoom * g.scale, g.clientX, g.clientY);
+    };
+    // Never zoom the whole page instead of the board.
+    const stopPageZoom = (e: Event) => e.preventDefault();
+
+    el.addEventListener("touchstart", onTouchStart, { passive: true });
+    el.addEventListener("touchmove", onTouchMove, { passive: false });
+    el.addEventListener("touchend", onTouchEnd);
+    el.addEventListener("touchcancel", onTouchEnd);
+    el.addEventListener("wheel", onWheel, { passive: false });
+    el.addEventListener("gesturestart", onGestureStart);
+    el.addEventListener("gesturechange", onGestureChange);
+    document.addEventListener("gesturestart", stopPageZoom);
+    return () => {
+      el.removeEventListener("touchstart", onTouchStart);
+      el.removeEventListener("touchmove", onTouchMove);
+      el.removeEventListener("touchend", onTouchEnd);
+      el.removeEventListener("touchcancel", onTouchEnd);
+      el.removeEventListener("wheel", onWheel);
+      el.removeEventListener("gesturestart", onGestureStart);
+      el.removeEventListener("gesturechange", onGestureChange);
+      document.removeEventListener("gesturestart", stopPageZoom);
+    };
+  }, [zoomTo, cancelDrag]);
 
   const ghost = drag ?? pending;
   const ghostStart = ghost ? dateAndMinutesToMs(date, ghost.startMin) : 0;
@@ -413,6 +542,11 @@ export default function Board({ initialDate }: { initialDate: string }) {
             aria-label="Pick a date"
           />
         </nav>
+        <div className="zoom-ctl" role="group" aria-label="Zoom">
+          <button onClick={() => zoomTo(zoomRef.current / 1.25)} disabled={zoom <= MIN_ZOOM} aria-label="Zoom out">−</button>
+          <button onClick={() => zoomTo(1)} className="zoom-level" aria-label="Reset zoom">{Math.round(zoom * 100)}%</button>
+          <button onClick={() => zoomTo(zoomRef.current * 1.25)} disabled={zoom >= MAX_ZOOM} aria-label="Zoom in">+</button>
+        </div>
         <div className="refresh">
           <span className="updated">
             {lastUpdated ? <>Updated {clockLabel(lastUpdated)}</> : "Loading…"}
@@ -434,8 +568,10 @@ export default function Board({ initialDate }: { initialDate: string }) {
         <div
           className="grid"
           style={{
-            gridTemplateColumns: `var(--time-col) repeat(${COLUMNS.length}, minmax(var(--col-min), 1fr))`,
+            gridTemplateColumns: `var(--time-col) repeat(${COLUMNS.length}, minmax(calc(var(--col-min) * ${colScale}), 1fr))`,
             gridTemplateRows: `var(--head-h) ${bodyHeight}px`,
+            ["--slot" as string]: `${15 * px}px`,
+            ["--hour" as string]: `${60 * px}px`,
           }}
         >
           <div className="corner" />
@@ -449,7 +585,7 @@ export default function Board({ initialDate }: { initialDate: string }) {
 
           <div className="time-col">
             {hours.map((h) => (
-              <div key={h} className="hour-label" style={{ top: (h - startHour) * 60 * PX_PER_MIN }}>
+              <div key={h} className="hour-label" style={{ top: (h - startHour) * 60 * px }}>
                 {hourLabel(h)}
               </div>
             ))}
@@ -470,13 +606,14 @@ export default function Board({ initialDate }: { initialDate: string }) {
               }}
             >
               {byColumn.get(t.id)!.map((a) => {
-                const compact = a.minutes < 25;
+                const compact = a.height < 46;
+                const tiny = a.height < 26;
                 const held = a.status === "held";
                 const moving = ghost?.appt.id === a.id;
                 return (
                   <button
                     key={a.id}
-                    className={`appt${compact ? " compact" : ""}${held ? " held" : ""}${moving ? " moving" : ""}`}
+                    className={`appt${compact ? " compact" : ""}${tiny ? " tiny" : ""}${held ? " held" : ""}${moving ? " moving" : ""}`}
                     style={{
                       top: a.top,
                       height: a.height,
@@ -495,11 +632,17 @@ export default function Board({ initialDate }: { initialDate: string }) {
                     {held && <span className="held-tag">held</span>}
                     {compact ? (
                       <span className="line">
-                        <b>{a.clientName}</b> {a.service}
+                        <span className="party">{a.partySize}</span>
+                        <b>{a.clientName}</b>
+                        {a.requested && <span className="heart">♥</span>} {a.service}
                       </span>
                     ) : (
                       <>
-                        <span className="line name">{a.clientName}</span>
+                        <span className="line name">
+                          <span className="party">{a.partySize}</span>
+                          {a.clientName}
+                          {a.requested && <span className="heart">♥</span>}
+                        </span>
                         {a.service && <span className="line">{a.service}</span>}
                         <span className="line time">{a.timeLabel}</span>
                       </>
@@ -512,8 +655,8 @@ export default function Board({ initialDate }: { initialDate: string }) {
                 <div
                   className={`appt ghost${pending ? " pending" : ""}`}
                   style={{
-                    top: (ghost.startMin - rangeStartMin) * PX_PER_MIN,
-                    height: Math.max(ghost.appt.minutes * PX_PER_MIN - 2, 24),
+                    top: (ghost.startMin - rangeStartMin) * px,
+                    height: Math.max(ghost.appt.minutes * px - 2, 18),
                     left: 2,
                     width: "calc(100% - 4px)",
                     ["--c" as string]: t.color,
@@ -555,7 +698,7 @@ export default function Board({ initialDate }: { initialDate: string }) {
               </div>
             )}
             {moveError && <div className="move-error">{moveError}</div>}
-            <div className="move-hint">GoHighLevel will notify the client.</div>
+            <div className="move-hint">The client will be notified.</div>
           </div>
           <div className="move-actions">
             <button className="primary" onClick={confirmMove} disabled={moveBusy}>

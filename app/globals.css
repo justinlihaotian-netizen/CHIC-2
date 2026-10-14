@@ -72,7 +72,10 @@ button, input { font: inherit; color: inherit; touch-action: manipulation; }
 }
 
 /* ── Grid ─────────────────────────────────── */
-.grid-scroll { flex: 1; min-height: 0; overflow: auto; -webkit-overflow-scrolling: touch; position: relative; }
+.grid-scroll {
+  flex: 1; min-height: 0; overflow: auto; -webkit-overflow-scrolling: touch; position: relative;
+  touch-action: pan-x pan-y; /* two-finger pinch zooms the board, not the page */
+}
 .grid { display: grid; position: relative; min-width: 100%; width: max-content; background: var(--surface); }
 
 .corner, .col-head { position: sticky; top: 0; background: var(--surface); border-bottom: 1px solid var(--line-strong); }
@@ -255,6 +258,7 @@ button, input { font: inherit; color: inherit; touch-action: manipulation; }
   .topbar button, .topbar input[type="date"] { min-height: 38px; padding: 6px 10px; font-size: 15px; }
   .topbar input[type="date"] { min-width: 0; width: 100%; }
   .wide { display: none; }
+  .topbar .zoom-ctl { display: none; } /* phones pinch with two fingers instead */
 
   .grid-scroll { scroll-snap-type: x proximity; scroll-padding-left: var(--time-col); }
   .col, .col-head { scroll-snap-align: start; }
@@ -274,3 +278,27 @@ button, input { font: inherit; color: inherit; touch-action: manipulation; }
   .move-actions { flex-direction: row; }
   .move-actions button { flex: 1; min-width: 0; }
 }
+
+/* ── Party size, requested technician, zoom ─ */
+.party {
+  display: inline-flex; align-items: center; justify-content: center; flex: none;
+  min-width: 15px; height: 15px; padding: 0 3px; margin-right: 4px; vertical-align: 1px;
+  border-radius: 4px; background: #5b6b82; color: #fff; font-size: 10.5px; font-weight: 700; line-height: 1;
+}
+.heart { color: #e0245e; margin-left: 3px; font-weight: 700; }
+.panel h2 .heart { margin-left: 2px; }
+.panel dd .party { margin-right: 2px; }
+.appt.tiny { font-size: 11px; line-height: 13px; padding-top: 0; padding-bottom: 0; }
+.appt.tiny .party { min-width: 13px; height: 13px; font-size: 9.5px; }
+
+.zoom-ctl { display: flex; align-items: center; }
+.zoom-ctl button { border-radius: 0; margin-left: -1px; min-width: 40px; font-size: 18px; line-height: 1; }
+.zoom-ctl button:first-child { border-radius: 10px 0 0 10px; margin-left: 0; }
+.zoom-ctl button:last-child { border-radius: 0 10px 10px 0; }
+.zoom-ctl .zoom-level { font-size: 13px; min-width: 58px; color: var(--muted); }
+
+.edit-form label.check {
+  flex-direction: row; align-items: center; gap: 10px; font-size: 15px; color: var(--ink); font-weight: 500;
+  padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: 10px; cursor: pointer;
+}
+.edit-form label.check input { width: 22px; min-height: 0; height: 22px; flex: none; accent-color: #e0245e; }

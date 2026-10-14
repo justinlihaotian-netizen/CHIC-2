@@ -5,7 +5,7 @@ import { GHL_GROUP_ID, GHL_LOCATION_ID, TECHNICIANS, UNASSIGNED } from "@/config
 import { clockLabel, dayRange, isValidDateString } from "@/lib/time";
 import { ghlRequest } from "@/lib/ghl";
 import type { Appointment } from "@/lib/types";
-import { parseTitle } from "@/lib/title";
+import { parseTitle, partySizes } from "@/lib/title";
 
 export const dynamic = "force-dynamic";
 
@@ -59,13 +59,15 @@ export async function GET(request: NextRequest) {
     if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) continue;
 
     const assigned = ev.assignedUserId ?? "";
-    const { clientName, service, groupOf } = parseTitle(ev.title ?? "");
+    const { clientName, service, groupOf, requested } = parseTitle(ev.title ?? "");
     events.push({
       id: ev.id ?? `${startMs}-${assigned}-${ev.title}`,
       techId: knownTechIds.has(assigned) ? assigned : UNASSIGNED.id,
       clientName,
       service,
       groupOf,
+      requested,
+      partySize: 1,
       start: startMs,
       end: Math.max(endMs, startMs + 5 * 60000),
       timeLabel: `${clockLabel(startMs)} – ${clockLabel(endMs)}`,
@@ -74,6 +76,8 @@ export async function GET(request: NextRequest) {
     });
   }
   events.sort((a, b) => a.start - b.start);
+  const sizes = partySizes(events);
+  for (const e of events) e.partySize = sizes.get(e.id) ?? 1;
 
   return NextResponse.json(
     { date, events, fetchedAt: Date.now() },

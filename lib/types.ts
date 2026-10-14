@@ -5,6 +5,8 @@ export type Appointment = {
   clientName: string;
   service: string;
   groupOf: string | null; // "Jane Doe" when the title has "(group of Jane Doe)"
+  partySize: number; // how many people came together (1 = on their own)
+  requested: boolean; // client asked for this technician (♥)
   start: number; // epoch ms
   end: number; // epoch ms
   timeLabel: string; // "10:00 AM – 11:15 AM"

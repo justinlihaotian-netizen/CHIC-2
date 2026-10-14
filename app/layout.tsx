@@ -11,6 +11,8 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+  maximumScale: 1, // pinching zooms the board itself, not the whole page
+  userScalable: false,
   viewportFit: "cover",
   themeColor: "#ffffff",
 };

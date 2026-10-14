@@ -8,7 +8,7 @@ import { toZonedIso } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
 
-// Ask GHL to send the client its usual reschedule / cancel messages.
+// Ask the booking system to send the client its usual reschedule / cancel messages.
 const NOTIFY_CLIENTS = true;
 
 const fail = (error: string, status: number) => NextResponse.json({ error }, { status });
@@ -67,14 +67,14 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     body.assignedUserId = input.techId;
   }
 
-  if (input.service !== undefined) {
+  if (input.service !== undefined || input.requested !== undefined) {
     const clientName = String(input.clientName ?? "").trim();
     const service = String(input.service ?? "").trim();
     const groupOf = input.groupOf ? String(input.groupOf).trim() : null;
     if (!clientName || clientName.length > 100 || service.length > 200 || (groupOf?.length ?? 0) > 100) {
       return fail("The name or service is too long or empty.", 400);
     }
-    body.title = buildTitle(clientName, service, groupOf);
+    body.title = buildTitle(clientName, service, groupOf, input.requested === true);
   }
 
   const result = await ghlRequest(`/calendars/events/appointments/${id}`, { method: "PUT", body });

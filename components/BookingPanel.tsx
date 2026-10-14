@@ -42,6 +42,7 @@ export default function BookingPanel({ appt, tech, boardDate, dayEvents, onClose
       techId: tech.id === UNASSIGNED.id ? "" : tech.id,
       service: appt.service,
       status: appt.status === "held" ? "held" : "confirmed",
+      requested: appt.requested,
     };
   }, [appt, tech]);
   const [form, setForm] = useState(original);
@@ -90,8 +91,13 @@ export default function BookingPanel({ appt, tech, boardDate, dayEvents, onClose
       if (!form.techId) return setError("Please pick a technician.");
       changes.techId = form.techId;
     }
-    if (form.service.trim() !== original.service) {
-      Object.assign(changes, { service: form.service.trim(), clientName: appt.clientName, groupOf: appt.groupOf });
+    if (form.service.trim() !== original.service || form.requested !== original.requested) {
+      Object.assign(changes, {
+        service: form.service.trim(),
+        clientName: appt.clientName,
+        groupOf: appt.groupOf,
+        requested: form.requested,
+      });
     }
     if (form.status !== original.status) changes.status = form.status;
 
@@ -107,7 +113,10 @@ export default function BookingPanel({ appt, tech, boardDate, dayEvents, onClose
       <div className="backdrop" onClick={busy ? undefined : onClose} />
       <aside className="panel" style={{ ["--c" as string]: tech.color }}>
         <button className="close" onClick={onClose} disabled={busy} aria-label="Close">✕</button>
-        <h2>{appt.clientName}</h2>
+        <h2>
+          {appt.clientName}
+          {appt.requested && <span className="heart" aria-label="Requested technician"> ♥</span>}
+        </h2>
 
         {mode !== "edit" && (
           <>
@@ -120,6 +129,13 @@ export default function BookingPanel({ appt, tech, boardDate, dayEvents, onClose
               <dd>
                 <span className="dot" style={{ background: tech.color }} /> {tech.name}
               </dd>
+              <dt>Party</dt>
+              <dd>
+                <span className="party">{appt.partySize}</span>
+                {appt.partySize === 1 ? "Just this client" : `${appt.partySize} people together`}
+              </dd>
+              <dt>Requested</dt>
+              <dd>{appt.requested ? <><span className="heart">♥</span> Asked for {tech.name}</> : "No — any technician"}</dd>
               <dt>Status</dt>
               <dd>
                 <span className={`status ${appt.status === "held" ? "held" : ""}`}>
@@ -153,7 +169,7 @@ export default function BookingPanel({ appt, tech, boardDate, dayEvents, onClose
             {mode === "confirm-cancel" && (
               <div className="confirm-box">
                 <p>
-                  Cancel <b>{appt.clientName}</b>&rsquo;s booking at {appt.timeLabel}? GoHighLevel will notify the client.
+                  Cancel <b>{appt.clientName}</b>&rsquo;s booking at {appt.timeLabel}? The client will be notified.
                 </p>
                 <div className="actions row">
                   <button className="danger" disabled={busy} onClick={() => send({ status: "cancelled" }, `Cancelled ${appt.clientName}'s booking.`)}>
@@ -206,6 +222,10 @@ export default function BookingPanel({ appt, tech, boardDate, dayEvents, onClose
                 ))}
               </select>
             </label>
+            <label className="check">
+              <input type="checkbox" checked={form.requested} onChange={(e) => set("requested", e.target.checked)} />
+              <span><span className="heart">♥</span> Client asked for this technician</span>
+            </label>
             <label>
               Service
               <input type="text" value={form.service} maxLength={200} onChange={(e) => set("service", e.target.value)} />
@@ -225,7 +245,7 @@ export default function BookingPanel({ appt, tech, boardDate, dayEvents, onClose
               </div>
             )}
             {error && <div className="panel-error">{error}</div>}
-            <p className="hint">GoHighLevel will notify the client about time changes.</p>
+            <p className="hint">The client will be notified about time changes.</p>
 
             <div className="actions row">
               <button type="submit" className="primary" disabled={busy}>

@@ -7,7 +7,7 @@ export type GhlResult<T> = { ok: true; data: T } | { ok: false; error: string };
 export async function ghlRequest<T>(path: string, init: { method?: string; body?: unknown } = {}): Promise<GhlResult<T>> {
   const token = process.env.GHL_TOKEN;
   if (!token) {
-    return { ok: false, error: "The GHL token is missing. Add GHL_TOKEN to .env.local and restart." };
+    return { ok: false, error: "The booking system isn't connected yet (its access token is missing)." };
   }
 
   let res: Response;
@@ -25,7 +25,7 @@ export async function ghlRequest<T>(path: string, init: { method?: string; body?
       signal: AbortSignal.timeout(15000),
     });
   } catch {
-    return { ok: false, error: "Can't reach GoHighLevel right now. Check the internet connection and try again." };
+    return { ok: false, error: "Can't reach the booking system right now. Check the internet connection and try again." };
   }
 
   const data = await res.json().catch(() => null);
@@ -36,16 +36,16 @@ export async function ghlRequest<T>(path: string, init: { method?: string; body?
       ok: false,
       error:
         init.method && init.method !== "GET"
-          ? "GoHighLevel didn't allow this change. The GHL token needs the “Edit Calendar Events” (calendars/events.write) permission."
-          : "GoHighLevel refused the token. The GHL_TOKEN may be wrong, expired, or missing calendar permissions.",
+          ? "The booking system didn't allow this change. Its access token needs permission to edit calendar events."
+          : "The booking system refused the connection. The access token may be wrong, expired, or missing calendar permissions.",
     };
   }
-  if (res.status === 429) return { ok: false, error: "GoHighLevel says we're asking too often. Wait a moment and try again." };
+  if (res.status === 429) return { ok: false, error: "The booking system is busy. Wait a moment and try again." };
 
-  // GHL usually explains validation problems in "message".
+  // The booking system usually explains validation problems in "message".
   const msg = data && (Array.isArray(data.message) ? data.message.join(", ") : data.message);
   if (res.status >= 400 && res.status < 500 && typeof msg === "string" && msg) {
-    return { ok: false, error: `GoHighLevel said: ${msg}` };
+    return { ok: false, error: `The booking system said: ${msg}` };
   }
-  return { ok: false, error: `GoHighLevel is having trouble (error ${res.status}). Please try again.` };
+  return { ok: false, error: `The booking system is having trouble (error ${res.status}). Please try again.` };
 }
