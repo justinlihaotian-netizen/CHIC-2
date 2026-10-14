@@ -1,0 +1,27 @@
+// ─── Salon settings ─────────────────────────────────────────────
+// Edit this file to change the salon name, hours, or technicians.
+
+export const SALON_NAME = "CHIC 2 Wasaga";
+export const TIME_ZONE = "America/Toronto";
+
+// The board always shows at least these hours (24-hour clock).
+// If an appointment falls outside them, the board stretches to fit.
+export const DAY_START_HOUR = 9; // 9:00 AM
+export const DAY_END_HOUR = 20; // 8:00 PM
+
+// GoHighLevel account ids (not secret — the token lives in .env.local).
+export const GHL_LOCATION_ID = "yAamMXgYk4PvWUmljkox";
+export const GHL_GROUP_ID = "FJO2ux0X4NhP2FuATCQD";
+
+export type Technician = { id: string; name: string; color: string };
+
+// To add a technician: copy one line, change the name, GHL user id and colour.
+export const TECHNICIANS: Technician[] = [
+  { id: "aqlD0AF0sWWaHRNaAtnc", name: "Iko", color: "#8E24AA" },
+  { id: "5E74a8yx9ctSySomHXJ8", name: "Kathy", color: "#F4511E" },
+  { id: "BF3hofVjav81nr3Ez9wF", name: "Vicky", color: "#3F51B5" },
+  { id: "SfAT0DCBJICbwhVQu4ZA", name: "Yuna", color: "#33B679" },
+];
+
+// Anything with an unknown or empty technician goes here (always the last column).
+export const UNASSIGNED: Technician = { id: "unassigned", name: "Unassigned", color: "#757575" };
