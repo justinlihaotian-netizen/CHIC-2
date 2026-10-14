@@ -13,3 +13,6 @@ next-env.d.ts
 
 # local tools
 .claude/
+
+# stray empty repo made by GitHub Desktop (not part of the board)
+CHIC-2/
