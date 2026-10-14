@@ -39,13 +39,15 @@ export default function PinScreen() {
         <p>Enter the PIN to open the board</p>
         <input
           type="password"
-          inputMode="numeric"
           autoComplete="off"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
           autoFocus
           value={pin}
           onChange={(e) => setPin(e.target.value)}
           aria-label="PIN"
-          placeholder="••••"
+          placeholder="PIN"
         />
         {error && <div className="pin-error">{error}</div>}
         <button type="submit" disabled={!pin || busy}>

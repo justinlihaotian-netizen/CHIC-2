@@ -34,7 +34,7 @@ button, input { font: inherit; color: inherit; touch-action: manipulation; }
 .pin-card h1 { margin: 0; font-size: 24px; }
 .pin-card p { margin: 0; color: var(--muted); }
 .pin-card input {
-  font-size: 28px; text-align: center; letter-spacing: 0.4em; padding: 12px;
+  font-size: 28px; text-align: center; letter-spacing: 0.15em; padding: 12px;
   border: 1px solid var(--line-strong); border-radius: 12px; outline: none;
 }
 .pin-card input:focus { border-color: var(--accent); }
