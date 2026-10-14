@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { TECHNICIANS, UNASSIGNED, type Technician } from "@/config/salon";
 import { dateAndMinutesToMs, longDateLabel, minutesIntoDay, minutesLabel, todayString } from "@/lib/time";
 import type { Appointment } from "@/lib/types";
+import { findClashes, patchBooking } from "@/lib/bookingClient";
 
 type Mode = "view" | "edit" | "confirm-cancel";
 
@@ -67,32 +68,16 @@ export default function BookingPanel({ appt, tech, boardDate, dayEvents, onClose
   // Warn if the new time overlaps another booking for the same technician.
   const clashes = useMemo(() => {
     if (!form.techId || form.date !== boardDate) return [];
-    return dayEvents.filter(
-      (e) => e.id !== appt.id && e.techId === form.techId && e.start < newEnd && e.end > newStart,
-    );
+    return findClashes(dayEvents, appt.id, form.techId, newStart, newEnd);
   }, [form.techId, form.date, boardDate, dayEvents, appt.id, newStart, newEnd]);
 
   async function send(changes: Record<string, unknown>, message: string) {
     setBusy(true);
     setError(null);
-    try {
-      const res = await fetch(`/api/events/${encodeURIComponent(appt.id)}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(changes),
-      });
-      const data = await res.json().catch(() => null);
-      if (res.status === 401) return window.location.reload();
-      if (!res.ok) {
-        setError(data?.error ?? "The change didn't go through. Please try again.");
-      } else {
-        onSaved(message);
-      }
-    } catch {
-      setError("Can't reach the board's server. Check the internet connection and try again.");
-    } finally {
-      setBusy(false);
-    }
+    const problem = await patchBooking(appt.id, changes);
+    setBusy(false);
+    if (problem) setError(problem);
+    else onSaved(message);
   }
 
   function save() {

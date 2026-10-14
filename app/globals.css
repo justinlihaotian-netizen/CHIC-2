@@ -8,6 +8,7 @@
   --accent: #1d1d1f;
   --now: #e53935;
   --time-col: 64px;
+  --col-min: 170px; /* narrowest a technician column may get (changes per device below) */
   --head-h: 44px;
   --slot: 30px; /* 15 minutes — keep in sync with PX_PER_MIN in Board.tsx */
   --hour: 120px;
@@ -77,7 +78,7 @@ button, input { font: inherit; color: inherit; touch-action: manipulation; }
 .corner, .col-head { position: sticky; top: 0; background: var(--surface); border-bottom: 1px solid var(--line-strong); }
 .corner { left: 0; z-index: 5; border-right: 1px solid var(--line-strong); }
 .col-head {
-  z-index: 4; display: flex; align-items: center; gap: 8px; padding: 0 12px;
+  z-index: 4; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 0 12px;
   font-weight: 700; font-size: 15px; border-bottom-width: 3px; border-left: 1px solid var(--line);
 }
 .col-head .count { margin-left: auto; font-weight: 500; font-size: 12px; color: var(--muted); }
@@ -113,6 +114,7 @@ button, input { font: inherit; color: inherit; touch-action: manipulation; }
 
 /* ── Appointment blocks ───────────────────── */
 .appt {
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
   position: absolute; z-index: 1; overflow: hidden; text-align: left; cursor: pointer;
   display: flex; flex-direction: column; justify-content: flex-start; gap: 1px;
   padding: 3px 6px 3px 8px; border: 0; border-radius: 6px;
@@ -158,12 +160,6 @@ button, input { font: inherit; color: inherit; touch-action: manipulation; }
 @keyframes slide { from { transform: translateX(100%); } }
 @keyframes fade { from { opacity: 0; } }
 
-/* Narrow screens: stack the header */
-@media (max-width: 760px) {
-  .topbar { gap: 8px; }
-  .brand { width: 100%; }
-  .controls { flex-wrap: wrap; }
-}
 
 /* ── Editing ──────────────────────────────── */
 .actions { display: flex; flex-direction: column; gap: 10px; margin-top: 28px; }
@@ -193,4 +189,88 @@ button, input { font: inherit; color: inherit; touch-action: manipulation; }
   position: fixed; left: 50%; bottom: max(24px, env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 30;
   background: #1d1d1f; color: #fff; padding: 12px 18px; border-radius: 12px; font-size: 15px;
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25); animation: fade 0.2s ease-out; max-width: calc(100vw - 32px);
+}
+
+.col-head .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── Drag and drop ────────────────────────── */
+.grid-scroll.dragging { cursor: grabbing; }
+.grid-scroll.dragging .appt { pointer-events: none; }
+.col.drop-target { background-color: #fafafe; }
+.appt.moving { opacity: 0.3; }
+.appt.ghost {
+  z-index: 6; pointer-events: none; border-left: 4px solid var(--c);
+  outline: 2px solid var(--c); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+.appt.ghost.pending { outline-style: dashed; box-shadow: none; }
+
+.move-bar {
+  position: fixed; z-index: 25; left: 50%; transform: translateX(-50%);
+  bottom: max(16px, env(safe-area-inset-bottom)); width: min(640px, calc(100vw - 24px));
+  display: flex; align-items: center; gap: 16px; padding: 14px 16px;
+  background: var(--surface); border-radius: 16px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.22);
+  animation: fade 0.15s ease-out;
+}
+.move-text { flex: 1; font-size: 15px; line-height: 1.4; }
+.move-warn { margin-top: 6px; color: #8a4b00; font-size: 13px; }
+.move-error { margin-top: 6px; color: #a01919; font-size: 13px; }
+.move-hint { margin-top: 4px; color: var(--muted); font-size: 12px; }
+.move-actions { display: flex; flex-direction: column; gap: 8px; flex: none; }
+.move-actions button {
+  min-height: 44px; min-width: 120px; border-radius: 12px; border: 1px solid var(--line-strong);
+  background: var(--surface); font-size: 15px; font-weight: 600; cursor: pointer;
+}
+.move-actions .primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.move-actions button:disabled { opacity: 0.55; }
+
+/* ── Three layouts ────────────────────────── */
+
+/* Desktop / laptop: wider columns, hover feedback */
+@media (min-width: 1200px) {
+  :root { --col-min: 200px; --time-col: 72px; }
+  .topbar { padding-left: 24px; padding-right: 24px; }
+  .appt { cursor: grab; transition: filter 0.1s; }
+  .appt:hover { filter: brightness(0.96); box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.9), 0 2px 8px rgba(0, 0, 0, 0.1); }
+  .topbar button:hover { background: var(--bg); }
+  .topbar button.active:hover { background: var(--accent); }
+}
+
+/* iPad (portrait and landscape) uses the base styles above: 170px columns. */
+
+/* Phone: compact header, narrower swipeable columns, full-width panel */
+@media (max-width: 700px) {
+  :root { --col-min: 136px; --time-col: 50px; --head-h: 40px; }
+  .topbar {
+    display: grid; grid-template-columns: 1fr auto; gap: 8px 10px;
+    grid-template-areas: "brand refresh" "controls controls";
+    padding: 8px 12px; padding-top: max(8px, env(safe-area-inset-top));
+  }
+  .brand { grid-area: brand; width: auto; margin: 0; min-width: 0; }
+  .refresh { grid-area: refresh; }
+  .salon { font-size: 16px; }
+  .date-label { font-size: 13px; }
+  .refresh { flex-direction: column; align-items: flex-end; gap: 2px; }
+  .refresh .updated { font-size: 11px; order: 2; }
+  .controls { grid-area: controls; display: grid; grid-template-columns: 44px auto 44px 1fr; gap: 6px; }
+  .topbar button, .topbar input[type="date"] { min-height: 38px; padding: 6px 10px; font-size: 15px; }
+  .topbar input[type="date"] { min-width: 0; width: 100%; }
+  .wide { display: none; }
+
+  .grid-scroll { scroll-snap-type: x proximity; scroll-padding-left: var(--time-col); }
+  .col, .col-head { scroll-snap-align: start; }
+  .col-head { padding: 0 8px; font-size: 14px; gap: 6px; }
+  .hour-label { font-size: 11px; right: 5px; }
+  .now-label { font-size: 10px; padding: 1px 3px; right: 2px; }
+  .appt { font-size: 12px; padding: 2px 4px 2px 6px; border-left-width: 3px; }
+  .appt .name { font-size: 12.5px; }
+  .appt .time { font-size: 11px; }
+  .held-tag { font-size: 8.5px; padding: 0 3px; }
+
+  .panel { width: 100vw; padding: 20px 16px; padding-top: max(20px, env(safe-area-inset-top)); }
+  .panel h2 { font-size: 21px; }
+  .panel dl { grid-template-columns: 90px 1fr; font-size: 15px; }
+
+  .move-bar { flex-direction: column; align-items: stretch; gap: 12px; }
+  .move-actions { flex-direction: row; }
+  .move-actions button { flex: 1; min-width: 0; }
 }
