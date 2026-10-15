@@ -13,7 +13,10 @@ import {
   shortDateLabel,
   todayString,
 } from "@/lib/time";
-import type { Appointment } from "@/lib/types";
+import { OFF_DAY_TITLE, type Appointment, type Block } from "@/lib/types";
+import { COLOR_BY_KEY, serviceLook } from "@/lib/serviceType";
+import StaffPanel from "@/components/StaffPanel";
+import { IconSettings } from "@/components/Icons";
 import { findClashes, patchBooking } from "@/lib/bookingClient";
 import BookingPanel from "@/components/BookingPanel";
 import { MenuButton } from "@/components/Shell";
@@ -28,6 +31,8 @@ const SNAP_MIN = 15; // dragged bookings snap to quarter hours
 const LONG_PRESS_MS = 450; // touch: hold this long before a booking can be dragged
 const COLUMNS: Technician[] = [...TECHNICIANS, UNASSIGNED];
 const techById = new Map(COLUMNS.map((t) => [t.id, t]));
+
+const HIDDEN_KEY = "salonBoardHiddenTechs";
 
 /** Mix a "#RRGGBB" colour with white; amount 0–1 of the colour. Works on older iPads. */
 function tint(hex: string, amount: number): string {
@@ -105,6 +110,10 @@ export default function Board({ initialDate }: { initialDate: string }) {
   const [selected, setSelected] = useState<Appointment | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [toast, setToast] = useState<string | null>(null);
+  const [blocks, setBlocks] = useState<Block[]>([]);
+  const [staffOpen, setStaffOpen] = useState<string | null>(null); // technician whose ⚙ panel is open
+  const [hiddenTechs, setHiddenTechs] = useState<string[]>([]);
+  const [colorBy, setColorBy] = useState<"service" | "technician">("service");
   const [zoom, setZoom] = useState(1);
   const px = BASE_PX_PER_MIN * zoom; // pixels per minute at the current zoom
   const colScale = Math.min(1.6, Math.max(0.8, zoom)); // columns widen/narrow less than time does
@@ -143,6 +152,7 @@ export default function Board({ initialDate }: { initialDate: string }) {
         setError(data?.error ?? "Something went wrong loading appointments. We'll keep trying.");
       } else {
         setEvents(data.events);
+        setBlocks(data.blocks ?? []);
         setLoadedDate(d);
         setLastUpdated(data.fetchedAt);
         setError(null);
@@ -185,6 +195,22 @@ export default function Board({ initialDate }: { initialDate: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [events]);
 
+  // This device's choices: hidden columns and colour mode.
+  useEffect(() => {
+    try {
+      setHiddenTechs(JSON.parse(localStorage.getItem(HIDDEN_KEY) || "[]"));
+      if (localStorage.getItem(COLOR_BY_KEY) === "technician") setColorBy("technician");
+    } catch {}
+  }, []);
+  const toggleHidden = (id: string) =>
+    setHiddenTechs((list) => {
+      const next = list.includes(id) ? list.filter((x) => x !== id) : [...list, id];
+      try {
+        localStorage.setItem(HIDDEN_KEY, JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+
   // Hide the "Saved" message after a few seconds.
   useEffect(() => {
     if (!toast) return;
@@ -210,6 +236,16 @@ export default function Board({ initialDate }: { initialDate: string }) {
   }, [moveBusy]);
 
   const shown = loadedDate === date ? events : [];
+  const shownBlocks = loadedDate === date ? blocks : [];
+  const cols = COLUMNS.filter((t) => !hiddenTechs.includes(t.id));
+
+  /** Fill colours for a booking: by service type (default) or by technician. */
+  const lookOf = (a: Appointment, techColor: string) =>
+    colorBy === "technician" ? [techColor] : serviceLook(a.service).colors;
+  const fill = (colors: string[], amount: number) =>
+    colors.length === 2
+      ? `linear-gradient(135deg, ${tint(colors[0], amount)} 50%, ${tint(colors[1], amount)} 50%)`
+      : tint(colors[0], amount);
   const isToday = date === todayString(now);
 
   // The board always shows the whole day, midnight to midnight.
@@ -498,6 +534,9 @@ export default function Board({ initialDate }: { initialDate: string }) {
   const ghostStart = ghost ? dateAndMinutesToMs(date, ghost.startMin) : 0;
   const ghostEnd = ghost ? ghostStart + ghost.appt.minutes * 60000 : 0;
   const pendingClashes = pending ? findClashes(shown, pending.appt.id, pending.techId, ghostStart, ghostEnd) : [];
+  const pendingBlocked = pending
+    ? shownBlocks.filter((b) => b.techId === pending.techId && b.start < ghostEnd && b.end > ghostStart)
+    : [];
 
   async function confirmMove() {
     if (!pending) return;
@@ -543,6 +582,14 @@ export default function Board({ initialDate }: { initialDate: string }) {
             aria-label="Pick a date"
           />
         </nav>
+        {hiddenTechs.length > 0 && (
+          <button className="hidden-chip" onClick={() => {
+            setHiddenTechs([]);
+            try { localStorage.removeItem(HIDDEN_KEY); } catch {}
+          }}>
+            {hiddenTechs.length} hidden · Show all
+          </button>
+        )}
         <div className="zoom-ctl" role="group" aria-label="Zoom">
           <button onClick={() => zoomTo(zoomRef.current / 1.25)} disabled={zoom <= MIN_ZOOM} aria-label="Zoom out">−</button>
           <button onClick={() => zoomTo(1)} className="zoom-level" aria-label="Reset zoom">{Math.round(zoom * 100)}%</button>
@@ -569,20 +616,29 @@ export default function Board({ initialDate }: { initialDate: string }) {
         <div
           className="grid"
           style={{
-            gridTemplateColumns: `var(--time-col) repeat(${COLUMNS.length}, minmax(calc(var(--col-min) * ${colScale}), 1fr))`,
+            gridTemplateColumns: `var(--time-col) repeat(${cols.length}, minmax(calc(var(--col-min) * ${colScale}), 1fr))`,
             gridTemplateRows: `var(--head-h) ${bodyHeight}px`,
             ["--slot" as string]: `${15 * px}px`,
             ["--hour" as string]: `${60 * px}px`,
           }}
         >
           <div className="corner" style={{ gridRow: 1, gridColumn: 1 }} />
-          {COLUMNS.map((t, i) => (
-            <div key={t.id} className="col-head" style={{ borderBottomColor: t.color, gridRow: 1, gridColumn: i + 2 }}>
-              <span className="dot" style={{ background: t.color }} />
-              <span className="name">{t.name}</span>
-              <span className="count">{byColumn.get(t.id)?.length || ""}</span>
-            </div>
-          ))}
+          {cols.map((t, i) => {
+            const off = shownBlocks.some((b) => b.techId === t.id && b.title === OFF_DAY_TITLE);
+            return (
+              <div key={t.id} className={`col-head${off ? " is-off" : ""}`} style={{ borderBottomColor: t.color, gridRow: 1, gridColumn: i + 2 }}>
+                <span className="dot" style={{ background: t.color }} />
+                <span className="name">{t.name}</span>
+                {off && <span className="off-pill">Off</span>}
+                <span className="count">{byColumn.get(t.id)?.length || ""}</span>
+                {t.id !== UNASSIGNED.id && (
+                  <button className="gear" onClick={() => setStaffOpen(t.id)} aria-label={`${t.name} settings`} title={`${t.name}: off, shift, breaks`}>
+                    <IconSettings size={17} />
+                  </button>
+                )}
+              </div>
+            );
+          })}
 
           <div className="time-col">
             {hours.map((h) => (
@@ -597,7 +653,7 @@ export default function Board({ initialDate }: { initialDate: string }) {
             )}
           </div>
 
-          {COLUMNS.map((t, i) => (
+          {cols.map((t, i) => (
             <div
               key={t.id}
               className={`col${ghost?.techId === t.id ? " drop-target" : ""}`}
@@ -607,6 +663,28 @@ export default function Board({ initialDate }: { initialDate: string }) {
                 else colRefs.current.delete(t.id);
               }}
             >
+              {shownBlocks
+                .filter((b) => b.techId === t.id)
+                .map((b) => {
+                  const s0 = Math.max(0, minutesIntoDay(b.start, date));
+                  const e0 = Math.min(1440, minutesIntoDay(b.end, date));
+                  return (
+                    <button
+                      key={b.id}
+                      className={`blocked${b.title === OFF_DAY_TITLE ? " off-day" : ""}`}
+                      style={{ top: (s0 - rangeStartMin) * px, height: Math.max((e0 - s0) * px, 4) }}
+                      onClick={() => setStaffOpen(t.id)}
+                      title={`${b.title} · ${minutesLabel(s0)} – ${minutesLabel(Math.min(e0, 1439))}`}
+                    >
+                      {(e0 - s0) * px >= 22 && (
+                        <span className="blocked-label">
+                          {b.title} · {minutesLabel(s0)} – {minutesLabel(Math.min(e0, 1439))}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+
               {byColumn.get(t.id)!.map((a) => {
                 const compact = a.height < 46;
                 const tiny = a.height < 26;
@@ -622,8 +700,8 @@ export default function Board({ initialDate }: { initialDate: string }) {
                       height: a.height,
                       left: `calc(${(a.lane / a.lanes) * 100}% + 2px)`,
                       width: `calc(${100 / a.lanes}% - 4px)`,
-                      ["--c" as string]: t.color,
-                      background: tint(t.color, held ? 0.07 : 0.16),
+                      ["--c" as string]: lookOf(a, t.color)[0],
+                      background: fill(lookOf(a, t.color), held ? 0.08 : colorBy === "service" ? 0.22 : 0.16),
                     }}
                     onPointerDown={(e) => startGesture(e, a)}
                     onContextMenu={(e) => e.preventDefault()}
@@ -664,8 +742,8 @@ export default function Board({ initialDate }: { initialDate: string }) {
                     height: Math.max(ghost.appt.minutes * px - 2, 18),
                     left: 2,
                     width: "calc(100% - 4px)",
-                    ["--c" as string]: t.color,
-                    background: tint(t.color, 0.3),
+                    ["--c" as string]: lookOf(ghost.appt, t.color)[0],
+                    background: fill(lookOf(ghost.appt, t.color), 0.32),
                   }}
                 >
                   <span className="line name">{ghost.appt.clientName}</span>
@@ -702,6 +780,11 @@ export default function Board({ initialDate }: { initialDate: string }) {
               {minutesLabel(pending.startMin)} – {minutesLabel(pending.startMin + pending.appt.minutes)}
             </b>{" "}
             with <b>{techById.get(pending.techId)?.name}</b>?
+            {pendingBlocked.length > 0 && (
+              <div className="move-warn">
+                ⚠️ {techById.get(pending.techId)?.name} isn&rsquo;t available then ({pendingBlocked.map((b) => b.title).join(", ")})
+              </div>
+            )}
             {pendingClashes.length > 0 && (
               <div className="move-warn">
                 ⚠️ Overlaps {pendingClashes.map((c) => `${c.clientName} (${c.timeLabel})`).join(", ")}
@@ -712,7 +795,7 @@ export default function Board({ initialDate }: { initialDate: string }) {
           </div>
           <div className="move-actions">
             <button className="primary" onClick={confirmMove} disabled={moveBusy}>
-              {moveBusy ? "Moving…" : pendingClashes.length ? "Move anyway" : "Move"}
+              {moveBusy ? "Moving…" : pendingClashes.length || pendingBlocked.length ? "Move anyway" : "Move"}
             </button>
             <button onClick={() => setPending(null)} disabled={moveBusy}>Cancel</button>
           </div>
@@ -730,6 +813,23 @@ export default function Board({ initialDate }: { initialDate: string }) {
           onSaved={(message) => {
             setSelected(null);
             setToast(message);
+            load(date);
+          }}
+        />
+      )}
+
+      {staffOpen && techById.get(staffOpen) && (
+        <StaffPanel
+          key={`${staffOpen}-${date}`}
+          tech={techById.get(staffOpen)!}
+          date={date}
+          blocks={shownBlocks.filter((b) => b.techId === staffOpen)}
+          bookings={shown.filter((a) => a.techId === staffOpen)}
+          hidden={hiddenTechs.includes(staffOpen)}
+          onToggleHidden={() => toggleHidden(staffOpen)}
+          onClose={() => setStaffOpen(null)}
+          onChanged={(message) => {
+            if (message) setToast(message);
             load(date);
           }}
         />

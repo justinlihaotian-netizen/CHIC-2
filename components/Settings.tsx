@@ -5,6 +5,7 @@ import { PageHeader, lockDevice } from "@/components/Shell";
 import { CLOSE_HOUR, OPEN_HOUR, SALON_NAME, TECHNICIANS, TIME_ZONE } from "@/config/salon";
 import { getJSON } from "@/lib/clientFetch";
 import { clockLabel, hourLabel } from "@/lib/time";
+import { ALL_LOOKS, COLOR_BY_KEY } from "@/lib/serviceType";
 
 type Check = { ok: boolean; error?: string };
 type StatusResponse = { appointments: Check; clients: Check; checkedAt: number };
@@ -14,6 +15,7 @@ export default function Settings() {
   const [statusError, setStatusError] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
   const [zoom, setZoom] = useState<string | null>(null);
+  const [colorBy, setColorBy] = useState<"service" | "technician">("service");
 
   async function check() {
     setChecking(true);
@@ -29,6 +31,7 @@ export default function Settings() {
     check();
     try {
       setZoom(localStorage.getItem("salonBoardZoom"));
+      if (localStorage.getItem(COLOR_BY_KEY) === "technician") setColorBy("technician");
     } catch {}
   }, []);
 
@@ -55,6 +58,49 @@ export default function Settings() {
           <div className="set-row"><span>Opening hours</span><b>{hourLabel(OPEN_HOUR)} – {hourLabel(CLOSE_HOUR)}</b></div>
           <div className="set-row"><span>Board shows</span><b>Full day (12 AM – 12 AM), closed hours shaded</b></div>
           <div className="set-row"><span>Time zone</span><b>{TIME_ZONE.replace("America/", "").replace("_", " ")} (Eastern)</b></div>
+        </section>
+
+        <section className="card">
+          <h2>Booking colours</h2>
+          <div className="set-row">
+            <span>Colour bookings by</span>
+            <div className="seg">
+              {(["service", "technician"] as const).map((m) => (
+                <button
+                  key={m}
+                  className={colorBy === m ? "on" : ""}
+                  onClick={() => {
+                    setColorBy(m);
+                    try {
+                      localStorage.setItem(COLOR_BY_KEY, m);
+                    } catch {}
+                  }}
+                >
+                  {m === "service" ? "Service" : "Technician"}
+                </button>
+              ))}
+            </div>
+          </div>
+          {colorBy === "service" && (
+            <div className="legend-grid">
+              {ALL_LOOKS.map((l) => (
+                <span key={l.id} className="legend-item">
+                  <span
+                    className="legend-swatch"
+                    style={{
+                      borderLeftColor: l.colors[0],
+                      background:
+                        l.colors.length === 2
+                          ? `linear-gradient(135deg, ${l.colors[0]}38 50%, ${l.colors[1]}38 50%)`
+                          : `${l.colors[0]}38`,
+                    }}
+                  />
+                  {l.name}
+                </span>
+              ))}
+            </div>
+          )}
+          <p className="muted small">Applies to this device. Colours are chosen to stay easy to tell apart, including for colour-blind staff.</p>
         </section>
 
         <section className="card">

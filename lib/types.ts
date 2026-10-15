@@ -36,3 +36,15 @@ export type Client = {
   tags: string[];
   dateAdded: string | null;
 };
+
+/** Time a technician isn't available (off, outside shift, break). Stored as blocked time in the booking system. */
+export type Block = {
+  id: string;
+  techId: string;
+  start: number; // epoch ms
+  end: number; // epoch ms
+  title: string; // "Off", "Off shift", "Lunch", …
+};
+
+export const OFF_DAY_TITLE = "Off";
+export const OFF_SHIFT_TITLE = "Off shift";

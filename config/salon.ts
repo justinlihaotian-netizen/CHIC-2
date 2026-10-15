@@ -24,3 +24,21 @@ export const TECHNICIANS: Technician[] = [
 
 // Anything with an unknown or empty technician goes here (always the last column).
 export const UNASSIGNED: Technician = { id: "unassigned", name: "Unassigned", color: "#757575" };
+
+// ─── Booking colours by service type ────────────────────────────
+// A booking gets the colour of the first type whose keyword appears in its service name.
+// "Mani" + "Pedi" in one booking (or "combo") shows half manicure / half pedicure colour.
+// These 4 colours are checked to stay distinguishable for colour-blind staff; adding more makes them blur.
+export type ServiceType = { id: string; name: string; color: string; keywords: string[] };
+export const SERVICE_TYPES: ServiceType[] = [
+  { id: "lash", name: "Lashes, brows & waxing", color: "#1baf7a", keywords: ["lash", "brow", "tint", "wax"] },
+  {
+    id: "enhance",
+    name: "Gel-X, BIAB & enhancements",
+    color: "#4a3aa7",
+    keywords: ["gel-x", "gelx", "gel x", "apres", "biab", "builder", "solar", "powder", "dip", "acrylic", "extension", "full set", "fill", "ombr"],
+  },
+  { id: "pedi", name: "Pedicure", color: "#eb6834", keywords: ["pedi"] },
+  { id: "mani", name: "Manicure", color: "#2a78d6", keywords: ["mani", "polish", "shellac", "repair", "nail"] },
+];
+export const SERVICE_OTHER: ServiceType = { id: "other", name: "Other", color: "#8a94a6", keywords: [] };
