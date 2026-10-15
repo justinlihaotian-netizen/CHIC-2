@@ -16,3 +16,6 @@ next-env.d.ts
 
 # stray empty repo made by GitHub Desktop (not part of the board)
 CHIC-2/
+
+# ids of test bookings made by scripts/test-bookings.mjs
+scripts/.test-bookings.json

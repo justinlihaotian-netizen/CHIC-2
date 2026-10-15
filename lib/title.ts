@@ -39,19 +39,30 @@ export function buildTitle(clientName: string, service: string, groupOf: string 
 }
 
 /** Party size for each booking of one day: the group members plus the person who booked for the group. */
-export function partySizes(bookings: { id: string; clientName: string; groupOf: string | null }[]) {
+export function partySizes(bookings: { id: string; clientName: string; groupOf: string | null; start: number }[]) {
   const norm = (s: string) => s.trim().toLowerCase();
   const members = new Map<string, number>();
-  for (const b of bookings) if (b.groupOf) members.set(norm(b.groupOf), (members.get(norm(b.groupOf)) ?? 0) + 1);
+  const groupStart = new Map<string, number>(); // when each group's first guest starts
+  for (const b of bookings) {
+    if (!b.groupOf) continue;
+    const key = norm(b.groupOf);
+    members.set(key, (members.get(key) ?? 0) + 1);
+    groupStart.set(key, Math.min(groupStart.get(key) ?? Infinity, b.start));
+  }
 
   // The organiser's own booking has no "(group of …)" but their name matches the group name (full or first name).
+  // If they have several bookings that day, the one closest in time to the group is theirs.
   const leaders = new Map<string, string>(); // group key → organiser booking id
-  for (const b of bookings) {
-    if (b.groupOf) continue;
-    const name = norm(b.clientName);
-    for (const key of members.keys()) {
-      if (!leaders.has(key) && (name === key || name === key.split(/\s+/)[0])) leaders.set(key, b.id);
+  for (const key of members.keys()) {
+    let best: { id: string; gap: number } | null = null;
+    for (const b of bookings) {
+      if (b.groupOf) continue;
+      const name = norm(b.clientName);
+      if (name !== key && name !== key.split(/\s+/)[0]) continue;
+      const gap = Math.abs(b.start - groupStart.get(key)!);
+      if (gap <= 3 * 3600_000 && (!best || gap < best.gap)) best = { id: b.id, gap };
     }
+    if (best && ![...leaders.values()].includes(best.id)) leaders.set(key, best.id);
   }
 
   const sizes = new Map<string, number>();
